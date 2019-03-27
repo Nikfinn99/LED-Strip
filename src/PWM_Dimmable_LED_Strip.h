@@ -21,6 +21,7 @@ class PWM_Dimmable_LED_Strip : public LED_Strip
         LED_Strip::updateLeds();
 
         uint8_t bri = getBrightness();
+        bri = ledLinBrightness(bri);
         analogWrite(m_pin, bri);
     }
 };
