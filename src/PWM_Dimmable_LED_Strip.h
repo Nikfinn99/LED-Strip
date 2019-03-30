@@ -11,7 +11,7 @@ class PWM_Dimmable_LED_Strip : public LED_Strip
     PWM_Dimmable_LED_Strip(uint8_t p_pin)
         : LED_Strip(1), m_pin(p_pin)
     {
-        analogWriteFreq(500);
+        analogWriteFreq(200);
         analogWriteRange(255);
     }
 

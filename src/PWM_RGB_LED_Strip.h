@@ -12,7 +12,7 @@ public:
   PWM_RGB_LED_Strip(const uint8_t pwm_R, const uint8_t pwm_G, const uint8_t pwm_B)
       : LED_Strip(1), m_pwm_r(pwm_R), m_pwm_g(pwm_G), m_pwm_b(pwm_B)
   {
-    analogWriteFreq(500);
+    analogWriteFreq(200);
     analogWriteRange(255);
   }
 
