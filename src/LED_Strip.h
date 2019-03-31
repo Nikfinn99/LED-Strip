@@ -21,11 +21,11 @@ public:
   };
 
 protected:
-  int m_num_leds = 0;
+  uint8_t m_num_leds = 0;
   MODE m_led_mode = MODE::SINGLE;
   bool m_on = true;
-  int m_brightness = 0;
-  int m_brightness_target = 0;
+  uint8_t m_brightness = 0;
+  uint8_t m_brightness_target = 0;
   CRGB *m_leds;
   CRGB *m_leds_raw; //unscaled version
   CRGB m_color_correction = 0xFFFFFF;
@@ -105,7 +105,7 @@ public:
     delete[] m_leds_raw;
   }
 
-  LED_Strip &init(const CRGB &init_color, const double init_bri, const int transition_time)
+  LED_Strip &init(const CRGB &init_color, const uint8_t init_bri, const uint16_t transition_time)
   {
 
     m_brightness_target = init_bri;
@@ -136,6 +136,10 @@ public:
   {
     m_color_correction = color_correction;
     return *this;
+  }
+
+  inline uint8_t getNumLeds(){
+    return m_num_leds;
   }
 
   inline LED_Strip &setBrightness(const uint8_t b)
