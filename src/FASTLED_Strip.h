@@ -21,8 +21,16 @@ public:
   { //update and show leds from this controller
     LED_Strip::updateLeds();
 
-    chipset->showLeds(255);
-    yield();
+    // find out if an update is necessary to prevent unnecessary writes using fastled and stop crashing
+    if (isUpdateNecessary())
+    {
+      chipset->showLeds();
+      DEBUG_LED.on();
+    }
+    else
+    {
+      DEBUG_LED.off();
+    }
   }
 };
 
