@@ -5,7 +5,7 @@
 #define FASTLED_ALLOW_INTERRUPTS 0
 #include <FastLED.h>
 
-#include <Filter.h>
+#include <FilterLinear.h>
 #include <CRGB_d.h>
 
 #include "led_helper.h"
@@ -21,20 +21,24 @@ public:
   };
 
 protected:
-  uint8_t m_num_leds = 0;
-  MODE m_led_mode = MODE::SINGLE;
-  bool m_on = true;
-  uint8_t m_brightness = 0;
-  uint8_t m_brightness_target = 0;
-  CRGB *m_leds;
+  MODE m_led_mode = MODE::SINGLE; // treat leds as one single color or individually
+
+  uint16_t m_num_leds = 0; // keep track of number of leds
+
+  uint8_t m_brightness_last = 0; // only necessary for setting power
+
+  uint16_t m_transition_time = 0; // for determining if leds should be updated
+  unsigned long m_last_update = 0;
+
+  CRGB m_color_correction = 0xFFFFFF; // apply color correction to leds if not every color has equal brightness
+
+  CRGB *m_leds;     // store led color in array mostly necessary for fastled
   CRGB *m_leds_raw; //unscaled version
-  CRGB m_color_correction = 0xFFFFFF;
-  CRGB m_color_target = 0;
-  // filters for smooth transition
-  Filter<> m_filter_bri;
-  Filter<> m_filter_color_r;
-  Filter<> m_filter_color_g;
-  Filter<> m_filter_color_b;
+
+  FilterLinear m_filter_bri; // filters for smooth transition
+  FilterLinear m_filter_color_r;
+  FilterLinear m_filter_color_g;
+  FilterLinear m_filter_color_b;
 
   /**
    * internal method to update led calculation
@@ -42,36 +46,28 @@ protected:
   */
   LED_Strip &updateLeds()
   {
-    //update brightness with smooth transition
-    if (m_on)
-    {
-      // strip is ON
-      m_filter_bri.updateLinear(m_brightness_target);
-    }
-    else
-    {
-      // strip is OFF
-      m_filter_bri.updateLinear(0);
-    }
-    m_brightness = m_filter_bri.getLinear();
+    // update brightness filter
+    m_filter_bri.update();
+    // calculate smooth color transition and apply to all leds
+    // update each color separately
+    m_filter_color_r.update();
+    m_filter_color_g.update();
+    m_filter_color_b.update();
 
     // single mode -> the entire strip acts as one led
     if (m_led_mode == MODE::SINGLE)
     {
-      // calculate smooth color transition and apply to all leds
-      // update each color separately
-      m_filter_color_r.updateLinear(m_color_target.r);
-      m_filter_color_g.updateLinear(m_color_target.g);
-      m_filter_color_b.updateLinear(m_color_target.b);
-
       // create color object from animated r g b values
-      CRGB c = CRGB(m_filter_color_r.getLinear(), m_filter_color_g.getLinear(), m_filter_color_b.getLinear());
+      CRGB c = CRGB(m_filter_color_r.getValue(), m_filter_color_g.getValue(), m_filter_color_b.getValue());
+
+      // calculate adjusted version of color so perceived brightness is linear
+      CRGB scaled_color = scaledColor(c, m_filter_bri.getValue(), m_color_correction);
 
       for (uint16_t i = 0; i < m_num_leds; i++)
       {
-        // scaled colors to output
-        m_leds[i] = scaledColor(c, m_brightness, m_color_correction);
-        // raw color to raw leds
+        // scaled color to output
+        m_leds[i] = scaled_color;
+        // store raw color in raw_leds array to allow for modification in individual mode
         m_leds_raw[i] = c;
       }
     }
@@ -82,17 +78,28 @@ protected:
       for (uint16_t i = 0; i < m_num_leds; i++)
       {
         // scale color to right brightness
-        m_leds[i] = scaledColor(m_leds_raw[i], m_brightness, m_color_correction);
+        m_leds[i] = scaledColor(m_leds_raw[i], m_filter_bri.getValue(), m_color_correction);
       }
     }
 
     return *this;
   }
 
-public:
-  LED_Strip(const int p_nleds)
+  /**
+   * determine if leds should be updated
+   * @returns true if update necessary else false
+  */
+  bool isUpdateNecessary()
   {
-    m_num_leds = max(1, p_nleds);
+    if (millis() > m_last_update + m_transition_time)
+      return false;
+    return true;
+  }
+
+public:
+  LED_Strip(const unsigned int p_nleds)
+  {
+    m_num_leds = max(1u, p_nleds);
     m_led_mode = m_num_leds == 1 ? MODE::SINGLE : MODE::MANY;
 
     m_leds = new CRGB[m_num_leds];
@@ -107,13 +114,14 @@ public:
 
   LED_Strip &init(const CRGB &init_color, const uint8_t init_bri, const uint16_t transition_time)
   {
+    m_transition_time = transition_time;
 
-    m_brightness_target = init_bri;
-    m_filter_bri.initLinear(init_bri, transition_time);
+    m_brightness_last = init_bri;
+    m_filter_bri.init(init_bri, transition_time);
 
-    m_filter_color_r.initLinear(init_color.r, transition_time);
-    m_filter_color_g.initLinear(init_color.g, transition_time);
-    m_filter_color_b.initLinear(init_color.b, transition_time);
+    m_filter_color_r.init(init_color.r, transition_time);
+    m_filter_color_g.init(init_color.g, transition_time);
+    m_filter_color_b.init(init_color.b, transition_time);
 
     for (uint16_t i = 0; i < m_num_leds; i++)
     {
@@ -123,8 +131,15 @@ public:
     return *this;
   }
 
+  LED_Strip &forceUpdate()
+  {
+    m_last_update = millis();
+    return *this;
+  }
+
   LED_Strip &fadeall(const uint8_t amount = 253)
   {
+    m_last_update = millis();
     for (int i = 0; i < m_num_leds; i++)
     {
       m_leds_raw[i].nscale8(amount);
@@ -138,36 +153,55 @@ public:
     return *this;
   }
 
-  inline uint8_t getNumLeds(){
+  inline uint8_t getNumLeds()
+  {
     return m_num_leds;
   }
 
   inline LED_Strip &setBrightness(const uint8_t b)
   {
-    m_brightness_target = b;
+    m_last_update = millis();
+
+    m_brightness_last = b;
+    m_filter_bri.setTarget(b);
     return *this;
   }
 
   inline uint8_t getBrightness()
   {
-    return m_brightness;
+    return m_filter_bri.getValue();
   }
 
   inline LED_Strip &setPower(const bool s)
   {
-    m_on = s;
+    m_last_update = millis();
+
+    if (s) // turn on
+    {
+      m_filter_bri.setTarget(m_brightness_last);
+    }
+    else // turn off
+    {
+      m_filter_bri.setTarget(0);
+    }
+
     return *this;
   }
 
   inline bool getPower()
   {
-    return m_on;
+    return m_filter_bri.getValue() > 0;
   }
 
   LED_Strip &setColor(const CRGB &c)
   {
+    m_last_update = millis();
+
     m_led_mode = MODE::SINGLE; //set to single mode so all leds are used as one
-    m_color_target = c;        //assign color to target
+
+    m_filter_color_r.setTarget(c.r);
+    m_filter_color_g.setTarget(c.g);
+    m_filter_color_b.setTarget(c.b);
     return *this;
   }
 

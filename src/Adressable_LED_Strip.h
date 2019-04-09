@@ -16,6 +16,8 @@ public:
 
   Adressable_LED_Strip &setSingleColor(const CRGB &color, const int i)
   {
+    m_last_update = millis();
+
     if (i > m_num_leds || i < 0)
       return *this;          //abort if out of index
     m_led_mode = MODE::MANY; //set mode to many to allow individual adressing of leds
