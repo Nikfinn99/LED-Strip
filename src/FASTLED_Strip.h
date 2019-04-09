@@ -25,11 +25,6 @@ public:
     if (isUpdateNecessary())
     {
       chipset->showLeds();
-      DEBUG_LED.on();
-    }
-    else
-    {
-      DEBUG_LED.off();
     }
   }
 };
