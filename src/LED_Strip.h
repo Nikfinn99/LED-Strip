@@ -25,7 +25,7 @@ protected:
 
   uint16_t m_num_leds = 0; // keep track of number of leds
 
-  uint8_t m_brightness_last = 0; // only necessary for setting power
+  bool m_power = 0; // only necessary for setting power
 
   uint16_t m_transition_time = 0; // for determining if leds should be updated
   unsigned long m_last_update = 0;
@@ -61,7 +61,7 @@ protected:
       CRGB c = CRGB(m_filter_color_r.getValue(), m_filter_color_g.getValue(), m_filter_color_b.getValue());
 
       // calculate adjusted version of color so perceived brightness is linear
-      CRGB scaled_color = scaledColor(c, m_filter_bri.getValue(), m_color_correction);
+      CRGB scaled_color = scaledColor(c, m_power ? m_filter_bri.getValue() : 0, m_color_correction);
 
       for (uint16_t i = 0; i < m_num_leds; i++)
       {
@@ -116,7 +116,7 @@ public:
   {
     m_transition_time = transition_time;
 
-    m_brightness_last = init_bri;
+    m_power = init_bri > 0 ? 1 : 0;
     m_filter_bri.init(init_bri, transition_time);
 
     m_filter_color_r.init(init_color.r, transition_time);
@@ -162,7 +162,6 @@ public:
   {
     m_last_update = millis();
 
-    m_brightness_last = b;
     m_filter_bri.setTarget(b);
     return *this;
   }
@@ -176,21 +175,14 @@ public:
   {
     m_last_update = millis();
 
-    if (s) // turn on
-    {
-      m_filter_bri.setTarget(m_brightness_last);
-    }
-    else // turn off
-    {
-      m_filter_bri.setTarget(0);
-    }
+    m_power = s;
 
     return *this;
   }
 
   inline bool getPower()
   {
-    return m_filter_bri.getValue() > 0;
+    return m_power;
   }
 
   LED_Strip &setColor(const CRGB &c)
